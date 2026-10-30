@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(["uid", "name", "email", "phone", "role", "createdAt"])
+        && request.resource.data.uid == userId
+        && request.resource.data.role == "customer";
+      allow update: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name", "phone"]);
+      allow delete: if isAdmin();
+    }
+
+    match /bookings/{bookingId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == "pending"
+        && request.resource.data.keys().hasOnly([
+          "userId", "customerName", "email", "phone", "pickupLocation",
+          "vehicle", "rentalType", "pickupDate", "returnDate", "message",
+          "status", "createdAt"
+        ]);
+      allow read: if signedIn()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "adminNote"]);
+      allow delete: if isAdmin();
+    }
+
+    match /enquiries/{enquiryId} {
+      allow create: if request.resource.data.keys().hasOnly([
+          "name", "email", "phone", "interest", "message", "createdAt"
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 1
+        && request.resource.data.email is string
+        && request.resource.data.email.size() > 4
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 4;
+      allow read, update, delete: if isAdmin();
+    }
+  }
+}
