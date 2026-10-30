@@ -232,8 +232,43 @@ function App() {
       </nav>
       <div className="nav-actions">
         <button className="theme-btn" onClick={()=>setTheme(theme==="dark"?"light":"dark")} aria-label="Switch theme">{theme==="dark"?<Sun size={18}/>:<Moon size={18}/>}</button>
-        {user ? <button className="btn btn-outline sign-in" onClick={handleLogout}><LogOut size={15}/> Sign Out</button> : <button className="btn btn-outline sign-in" onClick={()=>openAuth("signin")}>Sign In</button>}
-        <button className="btn btn-gold book-nav" onClick={()=>book()}>Book Now</button>
+     {user ? (
+  <>
+    <button
+      className="btn btn-outline sign-in"
+      onClick={() => loadMyBookings()}
+    >
+      <UserRound size={15} /> My Account
+    </button>
+
+    <button
+      className="btn btn-outline sign-in"
+      onClick={handleLogout}
+    >
+      <LogOut size={15} /> Sign Out
+    </button>
+  </>
+) : (
+  <>
+    <button
+      className="btn btn-outline sign-in"
+      onClick={() => openAuth("signin")}
+    >
+      Sign In
+    </button>
+
+    <button
+      className="btn btn-gold sign-up"
+      onClick={() => openAuth("register")}
+    >
+      Sign Up
+    </button>
+  </>
+)}
+
+<button className="btn btn-gold book-nav" onClick={() => book()}>
+  Book Now
+</button>
         <button className="mobile-menu" onClick={()=>setMenuOpen(!menuOpen)} aria-label="Toggle menu">{menuOpen?<X/>:<Menu/>}</button>
       </div>
     </div></header>;
