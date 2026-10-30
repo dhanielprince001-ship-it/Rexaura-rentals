@@ -6,3 +6,35 @@
 @media(max-width:900px){.nav{display:none;position:absolute;top:81px;left:0;right:0;background:var(--panel);border-bottom:1px solid var(--line);padding:12px 18px 18px;flex-direction:column;align-items:stretch}.nav.open{display:flex}.nav-link{text-align:left;padding:13px}.nav-link:after{display:none}.mobile-menu{display:grid}.hero{height:470px}.why-section{grid-template-columns:1fr;gap:25px}.footer-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:680px){.container,.nav-wrap{width:min(100% - 32px,1160px)}.header{height:70px}.nav{top:69px}.logo-word{font-size:25px}.nav-actions{gap:7px}.theme-btn,.mobile-menu{width:36px;height:36px}.sign-in{display:none}.book-nav{padding:10px 13px;font-size:12px}.hero{height:auto;min-height:520px;align-items:flex-start}.hero-bg{background:linear-gradient(90deg,#101114f2,#101114b8),url('https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=85') center/cover}.hero-copy{padding:80px 0 120px}.hero h1{font-size:43px}.hero-copy>p{font-size:15px}.hero-buttons{flex-wrap:wrap}.booking-overlap{margin-top:-65px}.search-panel,.form-card{padding:19px}.form-grid{grid-template-columns:1fr;gap:13px}.section{padding-top:50px}.section-heading{align-items:start;gap:12px;flex-direction:column}.section-heading h2,.why-section h2,.about-layout h2{font-size:29px}.car-grid{grid-template-columns:1fr}.car-image{height:220px}.benefits{grid-template-columns:1fr;gap:20px}.benefit{display:flex;gap:12px}.benefit h3{margin-top:0}.plans{grid-template-columns:1fr;padding-bottom:50px}.footer{padding:35px 20px 18px}.footer-grid{grid-template-columns:1fr 1fr;gap:28px 18px}.footer-grid>div:first-child{grid-column:1/-1}.copyright{line-height:1.9}.copyright span{display:block;margin:0}.page-main{padding:45px 0 60px}.page-intro h1{font-size:39px}.filter-row{align-items:flex-start;gap:12px;flex-direction:column}.filter-row label{align-items:flex-start;flex-direction:column;gap:7px}.about-layout,.contact-layout,.booking-layout{grid-template-columns:1fr}.about-layout img{height:250px}.values-grid,.service-grid{grid-template-columns:1fr}.contact-aside,.booking-aside{padding:20px}.enquiry-grid{grid-template-columns:1fr}.admin-toolbar .btn{margin-left:0}.toast{top:78px;right:10px}.config-banner{padding:10px 16px;flex-wrap:wrap}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+/* Authentication buttons */
+.sign-up {
+  white-space: nowrap;
+  padding: 11px 17px;
+  font-size: 13px;
+}
+
+.sign-in {
+  white-space: nowrap;
+}
+
+/* Mobile navigation */
+@media (max-width: 680px) {
+  .sign-in {
+    display: inline-flex;
+  }
+
+  .sign-up {
+    display: inline-flex;
+    padding: 9px 12px;
+    font-size: 11px;
+  }
+
+  .nav-actions {
+    gap: 6px;
+  }
+
+  .book-nav {
+    display: none;
+  }
+}
