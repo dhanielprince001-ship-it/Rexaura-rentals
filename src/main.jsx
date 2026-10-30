@@ -1,18 +1,18 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Fragment, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   signOut, sendPasswordResetEmail, updateProfile
 } from "firebase/auth";
 import {
-  addDoc, collection, doc, getDoc, getDocs, limit, orderBy, query,
-  serverTimestamp, updateDoc, where
+  addDoc, collection, doc, getDoc, getDocs, limit, query,
+  serverTimestamp, setDoc, updateDoc, where
 } from "firebase/firestore";
 import {
   Crown, Menu, X, Sun, Moon, CarFront, MapPin, CalendarDays, ShieldCheck,
   Clock3, UserRound, Plane, ChevronRight, Check, Mail, Phone, Instagram,
-  Facebook, ArrowRight, Gauge, Users, Star, LogOut, LayoutDashboard,
-  ClipboardList, CircleUserRound, AlertCircle, RefreshCw
+  Facebook, ArrowRight, Gauge, Users, Star, LogOut,
+  ClipboardList, AlertCircle, RefreshCw
 } from "lucide-react";
 import { auth, db, firebaseReady } from "./firebase";
 import "./styles.css";
@@ -69,6 +69,20 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(""), 6000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  useEffect(() => {
+    if (modal !== "auth") return;
+    const onKey = (e) => { if (e.key === "Escape") setModal(""); };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
+  }, [modal]);
+
+  useEffect(() => {
     if (!firebaseReady) { setAuthLoading(false); return; }
     return onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
@@ -113,13 +127,12 @@ function App() {
       if (authMode === "register") {
         const credential = await createUserWithEmailAndPassword(auth, email, password);
         if (name) await updateProfile(credential.user, { displayName: name });
-        await addDoc(collection(db, "_profileSetupAudit"), { uid: credential.user.uid, createdAt: serverTimestamp() }).catch(() => {});
         const userRef = doc(db, "users", credential.user.uid);
-        const { setDoc } = await import("firebase/firestore");
         await setDoc(userRef, {
           uid: credential.user.uid, name, email, phone: "", role: "customer",
           createdAt: serverTimestamp()
         });
+        setProfile({ uid: credential.user.uid, name, email, phone: "", role: "customer" });
         setModal(""); setNotice("Your account has been created.");
       } else {
         await signInWithEmailAndPassword(auth, email, password);
@@ -143,7 +156,8 @@ function App() {
     event.preventDefault();
     if (!user) { openAuth("signin"); setNotice("Please sign in before sending a booking request."); return; }
     setBookingBusy(true);
-    const form = new FormData(event.currentTarget);
+    const formEl = event.currentTarget;
+    const form = new FormData(formEl);
     try {
       await addDoc(collection(db, "bookings"), {
         userId: user.uid,
@@ -159,16 +173,17 @@ function App() {
         status: "pending",
         createdAt: serverTimestamp()
       });
-      event.currentTarget.reset();
+      formEl.reset();
       setNotice("Your booking request has been sent. It is pending confirmation by our team.");
-      setPage("My Bookings");
+      await loadMyBookings();
     } catch (error) { setNotice(prettyError(error)); }
     finally { setBookingBusy(false); }
   }
 
   async function submitContact(event) {
     event.preventDefault(); setContactBusy(true);
-    const form = new FormData(event.currentTarget);
+    const formEl = event.currentTarget;
+    const form = new FormData(formEl);
     try {
       await addDoc(collection(db, "enquiries"), {
         name: String(form.get("name")).trim(),
@@ -178,7 +193,7 @@ function App() {
         message: String(form.get("message")).trim(),
         createdAt: serverTimestamp()
       });
-      event.currentTarget.reset();
+      formEl.reset();
       setNotice("Thank you. Your enquiry has been received.");
     } catch (error) { setNotice(prettyError(error)); }
     finally { setContactBusy(false); }
@@ -224,11 +239,17 @@ function App() {
 
   function Header() {
     return <header className="header"><div className="nav-wrap">
-      <Logo/>
+      {Logo()}
       <nav className={menuOpen ? "nav open" : "nav"}>
         {pageNames.map(p=><button key={p} className={page===p?"nav-link active":"nav-link"} onClick={()=>go(p)}>{p}</button>)}
         {user && <button className="nav-link" onClick={loadMyBookings}>My Bookings</button>}
         {isAdmin && <button className="nav-link" onClick={()=>{go("Admin");loadAdmin();}}>Admin</button>}
+        <div className="nav-auth">
+          {user ? <button className="btn btn-outline" onClick={()=>{setMenuOpen(false);handleLogout();}}><LogOut size={15}/> Sign Out</button>
+            : <><button className="btn btn-outline" onClick={()=>{setMenuOpen(false);openAuth("signin");}}>Sign In</button>
+              <button className="btn btn-gold" onClick={()=>{setMenuOpen(false);openAuth("register");}}>Sign Up</button></>}
+          <button className="btn btn-gold" onClick={()=>book()}>Book Now</button>
+        </div>
       </nav>
       <div className="nav-actions">
         <button className="theme-btn" onClick={()=>setTheme(theme==="dark"?"light":"dark")} aria-label="Switch theme">{theme==="dark"?<Sun size={18}/>:<Moon size={18}/>}</button>
@@ -269,14 +290,14 @@ function App() {
 <button className="btn btn-gold book-nav" onClick={() => book()}>
   Book Now
 </button>
-        <button className="mobile-menu" onClick={()=>setMenuOpen(!menuOpen)} aria-label="Toggle menu">{menuOpen?<X/>:<Menu/>}</button>
+        <button className="mobile-menu" onClick={()=>setMenuOpen(!menuOpen)} aria-label="Toggle menu" aria-expanded={menuOpen}>{menuOpen?<X/>:<Menu/>}</button>
       </div>
     </div></header>;
   }
 
   function Footer() {
     return <footer className="footer"><div className="footer-grid">
-      <div><Logo/><p>Your trusted luxury car rental partner in Port Harcourt and Lagos. Experience style, comfort, and performance.</p></div>
+      <div>{Logo()}<p>Your trusted luxury car rental partner in Port Harcourt and Lagos. Experience style, comfort, and performance.</p></div>
       <div><h4>Company</h4>{["About","Services","Fleet","Contact"].map(x=><button className="footer-link" key={x} onClick={()=>go(x)}>{x}</button>)}</div>
       <div><h4>Locations</h4><p>Port Harcourt<br/>Lagos<br/>Victoria Island · Ikeja · GRA · Lekki</p></div>
       <div><h4>Contact</h4><a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a><a href={`tel:${CONTACT_PHONE}`}>{phoneDisplay}</a><div className="socials"><a href={`mailto:${CONTACT_EMAIL}`} aria-label="Email"><Mail/></a><a href="#" aria-label="Instagram"><Instagram/></a><a href="#" aria-label="Facebook"><Facebook/></a></div></div>
@@ -288,7 +309,7 @@ function App() {
   }
 
   function CarCard({car}) {
-    return <article className="car-card"><div className="car-image"><img src={car.image} alt={car.name}/><span className="car-tag">{car.type}</span></div><div className="car-info">
+    return <article className="car-card"><div className="car-image"><img src={car.image} alt={car.name} loading="lazy"/><span className="car-tag">{car.type}</span></div><div className="car-info">
       <h3>{car.name}</h3><p className="car-detail">{car.detail}</p>
       <div className="car-meta"><span><Users size={14}/>{car.seats}</span><span><Gauge size={14}/>Premium</span></div>
       <div className="car-bottom"><p>From <strong>{car.price}</strong> / day</p><button className="btn btn-gold small" onClick={()=>book(car)}>Book ride</button></div>
@@ -311,8 +332,8 @@ function App() {
       <span className="eyebrow"><span></span> PREMIUM CAR RENTALS</span><h1>Drive Luxury in <em>Port Harcourt</em> & Lagos</h1>
       <p>Premium G-Wagon, Range Rover and exotic fleet for hire — seamless rentals for business, events, and travel.</p>
       <div className="hero-buttons"><button className="btn btn-gold" onClick={()=>book()}>Book Your Ride <ArrowRight size={17}/></button><button className="btn btn-outline" onClick={()=>go("Fleet")}>Explore Fleet</button></div>
-    </div></div></section><main className="container home-main"><div className="booking-overlap"><BookingSearch/></div>
-      <section className="section fleet-preview"><div className="section-heading"><div><span className="eyebrow">THE COLLECTION</span><h2>Our Premium Fleet</h2><p>Handpicked vehicles for your premium experience.</p></div><button className="text-link" onClick={()=>go("Fleet")}>View all vehicles <ChevronRight size={17}/></button></div><div className="car-grid">{fleet.slice(0,3).map(car=><CarCard key={car.id} car={car}/>)}</div></section>
+    </div></div></section><main className="container home-main"><div className="booking-overlap">{BookingSearch()}</div>
+      <section className="section fleet-preview"><div className="section-heading"><div><span className="eyebrow">THE COLLECTION</span><h2>Our Premium Fleet</h2><p>Handpicked vehicles for your premium experience.</p></div><button className="text-link" onClick={()=>go("Fleet")}>View all vehicles <ChevronRight size={17}/></button></div><div className="car-grid">{fleet.slice(0,3).map(car=><Fragment key={car.id}>{CarCard({car})}</Fragment>)}</div></section>
       <section className="why-section"><div><span className="eyebrow">THE REXAURA DIFFERENCE</span><h2>Travel with confidence.</h2><p>Thoughtful service, dependable vehicles and a smooth experience from enquiry to drop-off.</p></div><div className="benefits">
         <Benefit icon={<ShieldCheck/>} title="Fully Insured" text="Ask our team about coverage and rental terms."/>
         <Benefit icon={<Clock3/>} title="24/7 Support" text="Reach our team whenever your plans need attention."/>
@@ -324,7 +345,7 @@ function App() {
   function Benefit({icon,title,text}) { return <div className="benefit"><span>{icon}</span><div><h3>{title}</h3><p>{text}</p></div></div>; }
   function Plan({title,price,period,items,popular,onClick}) { return <article className={popular?"plan popular":"plan"}>{popular&&<span className="popular-tag">POPULAR OPTION</span>}<h3>{title}</h3><p className="plan-price">{price}<small> {period}</small></p><ul>{items.map(i=><li key={i}><Check size={15}/>{i}</li>)}</ul><button className={popular?"btn btn-gold":"btn btn-outline"} onClick={onClick}>Enquire now</button></article>; }
   function FleetPage() {
-    return <main className="container page-main"><PageIntro eyebrow="OUR COLLECTION" title="Find your perfect ride" text="Explore our selection of premium SUVs, executive sedans and exotic vehicles."/><div className="filter-row"><label>Filter by category <select value={filter} onChange={e=>setFilter(e.target.value)}><option>All vehicles</option>{[...new Set(fleet.map(c=>c.type))].map(t=><option key={t}>{t}</option>)}</select></label><span>{visibleFleet.length} vehicles</span></div><div className="car-grid">{visibleFleet.map(car=><CarCard key={car.id} car={car}/>)}</div></main>;
+    return <main className="container page-main"><PageIntro eyebrow="OUR COLLECTION" title="Find your perfect ride" text="Explore our selection of premium SUVs, executive sedans and exotic vehicles."/><div className="filter-row"><label>Filter by category <select value={filter} onChange={e=>setFilter(e.target.value)}><option>All vehicles</option>{[...new Set(fleet.map(c=>c.type))].map(t=><option key={t}>{t}</option>)}</select></label><span>{visibleFleet.length} vehicles</span></div><div className="car-grid">{visibleFleet.map(car=><Fragment key={car.id}>{CarCard({car})}</Fragment>)}</div></main>;
   }
   function AboutPage() {
     return <main className="container page-main"><PageIntro eyebrow="ABOUT REXAURA" title="A better way to move." text="Rexaura Rentals brings premium vehicle hire and attentive service together for journeys that deserve more."/><div className="about-layout"><img src="https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=1200&q=85" alt="Premium vehicle"/><div><span className="eyebrow">OUR APPROACH</span><h2>Luxury is in the details.</h2><p>From the first enquiry to the end of your rental, our goal is to make every step clear, comfortable and dependable. We serve customers across Port Harcourt and Lagos with options for business travel, celebrations, airport transfers and personal journeys.</p><p>Tell us where you are going, what you need and when you need it. Our team will help you explore suitable vehicle and chauffeur options.</p><button className="btn btn-gold" onClick={()=>go("Contact")}>Talk to our team</button></div></div><div className="values-grid"><Value title="Care" text="Clear communication and thoughtful support."/><Value title="Quality" text="A considered range of premium vehicles."/><Value title="Reliability" text="Straightforward booking and rental coordination."/></div></main>;
@@ -354,16 +375,13 @@ function App() {
           <label>Pickup location<select name="pickupLocation"><option>Port Harcourt</option><option>Lagos</option></select></label>
           <label>Vehicle<select name="vehicle" defaultValue={selectedCar?.name||""}><option value="">Any available vehicle</option>{fleet.map(c=><option key={c.id}>{c.name}</option>)}</select></label>
           <label>Rental type<select name="rentalType"><option>Daily</option><option>Weekly</option><option>Monthly</option></select></label>
-          <label>Pickup date<input name="pickupDate" required type="date" min={new Date().toISOString().slice(0,10)}/></label>
+          <label>Pickup date<input name="pickupDate" required type="date" min={new Date().toISOString().slice(0,10)} onChange={e=>{const r=e.currentTarget.form.elements.returnDate; r.min=e.currentTarget.value; if(r.value&&r.value<e.currentTarget.value) r.value="";}}/></label>
           <label>Return date<input name="returnDate" required type="date" min={new Date().toISOString().slice(0,10)}/></label>
         </div><label>Additional details<textarea name="message" rows="4" placeholder="Chauffeur, airport pickup, event details..."/></label>
         <button className="btn btn-gold" disabled={bookingBusy}>{bookingBusy?"Submitting...":"Submit booking request"} <ArrowRight size={16}/></button>
         <p className="micro-note">This is a request, not a confirmed reservation. Our team will confirm availability and final pricing.</p>
       </form><aside className="booking-aside"><h3>Booking with confidence</h3><p><ShieldCheck/> Availability and final pricing are confirmed by our team.</p><p><Clock3/> Share your dates early for the best chance of securing your preferred vehicle.</p><p><Phone/> Need help? {phoneDisplay}</p></aside>
     </div></main>;
-  }
-  async function MyBookingsPage() {
-    return null;
   }
   function MyBookings() {
     return <main className="container page-main"><PageIntro eyebrow="YOUR ACCOUNT" title="My booking requests" text="Review the latest status of your rental enquiries."/>
@@ -397,19 +415,19 @@ function App() {
 
   if (authLoading) return <div className="loading-screen">Loading Rexaura Rentals...</div>;
   let currentPage;
-  if (page==="Home") currentPage=<Home/>;
-  else if (page==="Fleet") currentPage=<FleetPage/>;
-  else if (page==="About") currentPage=<AboutPage/>;
-  else if (page==="Services") currentPage=<ServicesPage/>;
-  else if (page==="Contact") currentPage=<ContactPage/>;
-  else if (page==="Book Now") currentPage=<BookingPage/>;
-  else if (page==="My Bookings") currentPage=<MyBookings/>;
-  else if (page==="Admin" && isAdmin) currentPage=<AdminPage/>;
-  else currentPage=<Home/>;
+  if (page==="Home") currentPage=Home();
+  else if (page==="Fleet") currentPage=FleetPage();
+  else if (page==="About") currentPage=AboutPage();
+  else if (page==="Services") currentPage=ServicesPage();
+  else if (page==="Contact") currentPage=ContactPage();
+  else if (page==="Book Now") currentPage=BookingPage();
+  else if (page==="My Bookings") currentPage=MyBookings();
+  else if (page==="Admin" && isAdmin) currentPage=AdminPage();
+  else currentPage=Home();
 
-  return <><Header/>{!firebaseReady&&<div className="config-banner"><AlertCircle size={16}/> Firebase setup required: add the VITE_FIREBASE environment variables to connect accounts and forms. <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer">Open Firebase</a></div>}
+  return <>{Header()}{!firebaseReady&&<div className="config-banner"><AlertCircle size={16}/> Firebase setup required: add the VITE_FIREBASE environment variables to connect accounts and forms. <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer">Open Firebase</a></div>}
     {notice&&<div className="toast" role="status"><span>{notice}</span><button onClick={()=>setNotice("")}><X size={16}/></button></div>}
-    {currentPage}<Footer/><AuthModal/>
+    {currentPage}{Footer()}{AuthModal()}
   </>;
 }
 
