@@ -10,9 +10,9 @@ import {
 } from "firebase/firestore";
 import {
   Crown, Menu, X, Sun, Moon, CarFront, MapPin, CalendarDays, ShieldCheck,
-  Clock3, UserRound, Plane, ChevronRight, Check, Mail, Phone, Instagram,
+  Clock3, Download, UserRound, Plane, ChevronRight, Check, Mail, Phone, Instagram,
   Facebook, ArrowRight, Gauge, Users, Star, LogOut,
-  ClipboardList, AlertCircle, RefreshCw
+  ClipboardList, AlertCircle, RefreshCw, MessageCircle
 } from "lucide-react";
 import { auth, db, firebaseReady } from "./firebase";
 import "./styles.css";
@@ -20,6 +20,40 @@ import "./styles.css";
 const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL || "rexgroups.uk@gmail.com";
 const CONTACT_PHONE = import.meta.env.VITE_CONTACT_PHONE || "+2348033564331";
 const phoneDisplay = "+234 803 356 4331";
+const WHATSAPP = (import.meta.env.VITE_WHATSAPP || CONTACT_PHONE).replace(/\D/g, "");
+const INSTAGRAM = import.meta.env.VITE_INSTAGRAM || "";
+const FACEBOOK = import.meta.env.VITE_FACEBOOK || "";
+const waLink = (text) => `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(text)}`;
+const BASE = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+const ROUTES = { Home: "/", Fleet: "/fleet", About: "/about", Services: "/services", Contact: "/contact", "Book Now": "/book", "My Bookings": "/my-bookings", Admin: "/admin", Privacy: "/privacy", Terms: "/terms" };
+const TITLES = { Home: "Premium Car Hire", Fleet: "Our Fleet", About: "About Us", Services: "Services", Contact: "Contact", "Book Now": "Book Now", "My Bookings": "My Bookings", Admin: "Admin", Privacy: "Privacy Policy", Terms: "Terms of Service" };
+const routeUrl = (page) => BASE + (ROUTES[page] || "/");
+const pageFromPath = () => {
+  let path = window.location.pathname;
+  if (BASE && path.startsWith(BASE)) path = path.slice(BASE.length);
+  path = path.replace(/\/+$/, "") || "/";
+  const hit = Object.entries(ROUTES).find(([, r]) => r === path);
+  return hit ? hit[0] : null;
+};
+const priceNumber = (price) => Number(String(price).replace(/[^0-9]/g, "")) || 0;
+const daysBetween = (a, b) => (a && b ? Math.max(1, Math.round((new Date(b) - new Date(a)) / 86400000)) : 0);
+const naira = (n) => "₦" + n.toLocaleString("en-NG");
+const EMAILJS = {
+  service: import.meta.env.VITE_EMAILJS_SERVICE_ID, template: import.meta.env.VITE_EMAILJS_TEMPLATE_ID, key: import.meta.env.VITE_EMAILJS_PUBLIC_KEY
+};
+const notifyTeam = (type, data) => {
+  // Emails the team through EmailJS (free tier). Silent no-op if not configured; never blocks a booking.
+  if (!EMAILJS.service || !EMAILJS.template || !EMAILJS.key) return;
+  const label = type === "booking" ? "New booking request" : "New website enquiry";
+  const lines = Object.entries(data).map(([k, v]) => `${k}: ${v || "-"}`).join("\n");
+  try {
+    fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true,
+      body: JSON.stringify({ service_id: EMAILJS.service, template_id: EMAILJS.template, user_id: EMAILJS.key,
+        template_params: { subject: `${label}: ${data.customerName || data.name || ""}`, message: lines, reply_to: data.email || "", from_name: data.customerName || data.name || "Website visitor" } })
+    }).catch(() => {});
+  } catch { /* ignore */ }
+};
 
 const fleet = [
   { id: 1, name: "Mercedes-Benz G-Wagon", type: "Luxury SUV", seats: "4–5 Seats", price: "₦120,000", image: "https://images.unsplash.com/photo-1520031441872-265e4ff70366?auto=format&fit=crop&w=1000&q=85", detail: "Iconic design, commanding presence and a refined cabin." },
@@ -41,7 +75,16 @@ const prettyError = (error) => {
 };
 
 function App() {
-  const [page, setPage] = useState("Home");
+  const [page, setPage] = useState(() => {
+    const fromPath = pageFromPath();
+    if (fromPath) return fromPath;
+    const p = new URLSearchParams(window.location.search).get("page");
+    return p && ROUTES[p] ? p : "Home";
+  });
+  const [estimate, setEstimate] = useState(null);
+  const [installEvent, setInstallEvent] = useState(null);
+  const [installed, setInstalled] = useState(() => window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true);
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const [menuOpen, setMenuOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("rexaura-theme") || "dark");
   const [user, setUser] = useState(null);
@@ -66,7 +109,41 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("rexaura-theme", theme);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#101114" : "#f7f5f0");
   }, [theme]);
+
+  useEffect(() => {
+    const onPrompt = (e) => { e.preventDefault(); setInstallEvent(e); };
+    const onInstalled = () => { setInstalled(true); setInstallEvent(null); setNotice("Rexaura Rentals was added to your home screen."); };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => { window.removeEventListener("beforeinstallprompt", onPrompt); window.removeEventListener("appinstalled", onInstalled); };
+  }, []);
+
+  async function installApp() {
+    if (installEvent) {
+      installEvent.prompt();
+      await installEvent.userChoice;
+      setInstallEvent(null);
+    } else if (isIOS) {
+      setNotice("To install: tap the Share button in Safari, then choose “Add to Home Screen”.");
+    } else {
+      setNotice("To install: open your browser menu and choose “Install app” or “Add to Home screen”.");
+    }
+  }
+  const canInstall = !installed && (installEvent || isIOS);
+
+  useEffect(() => {
+    const path = routeUrl(page);
+    if (window.location.pathname.replace(/\/+$/, "") !== path.replace(/\/+$/, "")) window.history.pushState({}, "", path);
+    document.title = page === "Home" ? "Rexaura Rentals | Premium Car Hire" : `${TITLES[page] || page} | Rexaura Rentals`;
+  }, [page]);
+
+  useEffect(() => {
+    const onPop = () => setPage(pageFromPath() || "Home");
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -169,11 +246,12 @@ function App() {
         rentalType: String(form.get("rentalType")),
         pickupDate: String(form.get("pickupDate")),
         returnDate: String(form.get("returnDate")),
-        message: String(form.get("message") || "").trim(),
+        message: [String(form.get("message") || "").trim(), form.getAll("addons").length ? "Add-ons requested: " + form.getAll("addons").join(", ") : ""].filter(Boolean).join("\n"),
         status: "pending",
         createdAt: serverTimestamp()
       });
-      formEl.reset();
+      notifyTeam("booking", { customerName: String(form.get("customerName")).trim(), email: user.email, phone: String(form.get("phone")).trim(), pickupLocation: String(form.get("pickupLocation")), vehicle: String(form.get("vehicle")) || "Any available", rentalType: String(form.get("rentalType")), pickupDate: String(form.get("pickupDate")), returnDate: String(form.get("returnDate")), message: [String(form.get("message") || "").trim(), form.getAll("addons").length ? "Add-ons requested: " + form.getAll("addons").join(", ") : ""].filter(Boolean).join("\n") });
+      formEl.reset(); setEstimate(null);
       setNotice("Your booking request has been sent. It is pending confirmation by our team.");
       await loadMyBookings();
     } catch (error) { setNotice(prettyError(error)); }
@@ -193,6 +271,7 @@ function App() {
         message: String(form.get("message")).trim(),
         createdAt: serverTimestamp()
       });
+      notifyTeam("enquiry", { name: String(form.get("name")).trim(), email: String(form.get("email")).trim(), phone: String(form.get("phone") || "").trim(), interest: String(form.get("interest")), message: String(form.get("message")).trim() });
       formEl.reset();
       setNotice("Thank you. Your enquiry has been received.");
     } catch (error) { setNotice(prettyError(error)); }
@@ -252,6 +331,7 @@ function App() {
         </div>
       </nav>
       <div className="nav-actions">
+        {canInstall && <button className="theme-btn install-btn" onClick={installApp} aria-label="Install app" title="Install app"><Download size={18}/></button>}
         <button className="theme-btn" onClick={()=>setTheme(theme==="dark"?"light":"dark")} aria-label="Switch theme">{theme==="dark"?<Sun size={18}/>:<Moon size={18}/>}</button>
      {user ? (
   <>
@@ -300,8 +380,36 @@ function App() {
       <div>{Logo()}<p>Your trusted luxury car rental partner in Port Harcourt and Lagos. Experience style, comfort, and performance.</p></div>
       <div><h4>Company</h4>{["About","Services","Fleet","Contact"].map(x=><button className="footer-link" key={x} onClick={()=>go(x)}>{x}</button>)}</div>
       <div><h4>Locations</h4><p>Port Harcourt<br/>Lagos<br/>Victoria Island · Ikeja · GRA · Lekki</p></div>
-      <div><h4>Contact</h4><a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a><a href={`tel:${CONTACT_PHONE}`}>{phoneDisplay}</a><div className="socials"><a href={`mailto:${CONTACT_EMAIL}`} aria-label="Email"><Mail/></a><a href="#" aria-label="Instagram"><Instagram/></a><a href="#" aria-label="Facebook"><Facebook/></a></div></div>
-    </div><div className="copyright">© {new Date().getFullYear()} Rexaura Rentals. All rights reserved. <span>Privacy Policy · Terms of Service</span></div></footer>;
+      <div><h4>Contact</h4><a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a><a href={`tel:${CONTACT_PHONE}`}>{phoneDisplay}</a>{canInstall && <button className="footer-link install-link" onClick={installApp}><Download size={13}/> Install the app</button>}<div className="socials"><a href={`mailto:${CONTACT_EMAIL}`} aria-label="Email"><Mail/></a><a href={waLink("Hello Rexaura Rentals, I would like to make an enquiry.")} target="_blank" rel="noreferrer" aria-label="WhatsApp"><MessageCircle/></a>{INSTAGRAM&&<a href={INSTAGRAM} target="_blank" rel="noreferrer" aria-label="Instagram"><Instagram/></a>}{FACEBOOK&&<a href={FACEBOOK} target="_blank" rel="noreferrer" aria-label="Facebook"><Facebook/></a>}</div></div>
+    </div><div className="copyright">© {new Date().getFullYear()} Rexaura Rentals. All rights reserved. <span><button className="legal-link" onClick={()=>go("Privacy")}>Privacy Policy</button> · <button className="legal-link" onClick={()=>go("Terms")}>Terms of Service</button></span></div></footer>;
+  }
+
+  function LegalPage({ kind }) {
+    const updated = "November 2026";
+    const privacy = [
+      ["Who we are", `Rexaura Rentals ("we") provides premium vehicle rentals in Port Harcourt and Lagos, Nigeria. Contact: ${CONTACT_EMAIL}, ${phoneDisplay}.`],
+      ["Information we collect", "Account details (name, email, phone), booking and enquiry details (vehicle, dates, locations, messages), and basic technical data needed to run the site. We do not collect or store card details on this website."],
+      ["How we use it", "To create and manage your account, respond to enquiries, confirm availability and pricing, arrange vehicles, and contact you about your booking."],
+      ["Where it is stored", "Account and booking data is stored with Google Firebase (Authentication and Cloud Firestore). Notifications about new requests may be sent to our team by email."],
+      ["Sharing", "We do not sell your data. We share it only with service providers needed to operate the service, or where required by law."],
+      ["Your choices", `You can ask us to access, correct or delete your data by contacting ${CONTACT_EMAIL}.`]
+    ];
+    const terms = [
+      ["Booking requests", "Submitting a booking creates a request, not a confirmed reservation. A booking is confirmed only when our team confirms availability, price and terms with you."],
+      ["Prices", "Prices shown on the website are starting prices and estimates. Final pricing, including chauffeur, airport pickup, fuel, extra days and any deposits, is confirmed by our team before you commit."],
+      ["Renters", "Renters must hold a valid driving licence (unless a chauffeur is booked), provide identification when requested, and use vehicles lawfully and with care."],
+      ["Damage, loss and cancellation", "Responsibility for damage, loss, traffic fines and cancellation conditions will be explained and agreed before the rental begins."],
+      ["Changes", "We may update these terms and the website from time to time."],
+      ["Contact", `Questions? Email ${CONTACT_EMAIL} or call ${phoneDisplay}.`]
+    ];
+    const sections = kind === "Privacy" ? privacy : terms;
+    return <main className="container page-main legal"><PageIntro eyebrow="LEGAL" title={kind === "Privacy" ? "Privacy Policy" : "Terms of Service"} text={`Last updated ${updated}.`}/>
+      {sections.map(([h,t])=><section key={h}><h2>{h}</h2><p>{t}</p></section>)}
+    </main>;
+  }
+
+  function WhatsAppFab() {
+    return <a className="wa-fab" href={waLink("Hello Rexaura Rentals, I would like to make an enquiry.")} target="_blank" rel="noreferrer" aria-label="Chat on WhatsApp"><MessageCircle size={26}/></a>;
   }
 
   function PageIntro({eyebrow,title,text}) {
@@ -368,7 +476,7 @@ function App() {
   }
   function BookingPage() {
     return <main className="container page-main"><PageIntro eyebrow="RESERVATIONS" title="Book your ride." text="Send a booking request and our team will contact you to confirm availability and rental terms."/><div className="booking-layout">
-      <form className="form-card" onSubmit={submitBooking}><h2>{selectedCar?selectedCar.name:"Rental enquiry"}</h2>{!user&&<p className="inline-hint">You'll need to <button type="button" className="inline-button" onClick={()=>openAuth("signin")}>sign in</button> before submitting a booking request.</p>}
+      <form className="form-card" onSubmit={submitBooking} onChange={e=>{const f=e.currentTarget.elements;const car=fleet.find(c=>c.name===f.vehicle.value);const d=daysBetween(f.pickupDate.value,f.returnDate.value);setEstimate(car&&d?{days:d,total:priceNumber(car.price)*d,rate:priceNumber(car.price)}:null);}}><h2>{selectedCar?selectedCar.name:"Rental enquiry"}</h2>{!user&&<p className="inline-hint">You'll need to <button type="button" className="inline-button" onClick={()=>openAuth("signin")}>sign in</button> before submitting a booking request.</p>}
         <div className="form-grid">
           <label>Full name<input name="customerName" required defaultValue={user?.displayName||profile?.name||""} placeholder="Your name"/></label>
           <label>Phone number<input name="phone" required defaultValue={profile?.phone||""} placeholder="+234..."/></label>
@@ -377,8 +485,12 @@ function App() {
           <label>Rental type<select name="rentalType"><option>Daily</option><option>Weekly</option><option>Monthly</option></select></label>
           <label>Pickup date<input name="pickupDate" required type="date" min={new Date().toISOString().slice(0,10)} onChange={e=>{const r=e.currentTarget.form.elements.returnDate; r.min=e.currentTarget.value; if(r.value&&r.value<e.currentTarget.value) r.value="";}}/></label>
           <label>Return date<input name="returnDate" required type="date" min={new Date().toISOString().slice(0,10)}/></label>
-        </div><label>Additional details<textarea name="message" rows="4" placeholder="Chauffeur, airport pickup, event details..."/></label>
+        </div>
+        <fieldset className="addons"><legend>Add-ons</legend><label className="check"><input type="checkbox" name="addons" value="Chauffeur"/> Chauffeur</label><label className="check"><input type="checkbox" name="addons" value="Airport pickup"/> Airport pickup</label><label className="check"><input type="checkbox" name="addons" value="Event / wedding use"/> Event use</label></fieldset>
+        <label>Additional details<textarea name="message" rows="4" placeholder="Event details, special requests..."/></label>
+        {estimate&&<div className="estimate"><span>Estimated base price</span><strong>{naira(estimate.total)}</strong><small>{naira(estimate.rate)} × {estimate.days} day{estimate.days>1?"s":""}. Estimate only; weekly/monthly rates, add-ons and final price are confirmed by our team.</small></div>}
         <button className="btn btn-gold" disabled={bookingBusy}>{bookingBusy?"Submitting...":"Submit booking request"} <ArrowRight size={16}/></button>
+        <button type="button" className="btn btn-outline wa-btn" onClick={e=>{const f=e.currentTarget.form.elements;window.open(waLink(`Hello Rexaura Rentals, I'd like to book ${f.vehicle.value||"a vehicle"} in ${f.pickupLocation.value} from ${f.pickupDate.value||"[date]"} to ${f.returnDate.value||"[date]"}. Name: ${f.customerName.value||"[name]"}.`),"_blank","noopener");}}><MessageCircle size={16}/> Book via WhatsApp</button>
         <p className="micro-note">This is a request, not a confirmed reservation. Our team will confirm availability and final pricing.</p>
       </form><aside className="booking-aside"><h3>Booking with confidence</h3><p><ShieldCheck/> Availability and final pricing are confirmed by our team.</p><p><Clock3/> Share your dates early for the best chance of securing your preferred vehicle.</p><p><Phone/> Need help? {phoneDisplay}</p></aside>
     </div></main>;
@@ -422,13 +534,25 @@ function App() {
   else if (page==="Contact") currentPage=ContactPage();
   else if (page==="Book Now") currentPage=BookingPage();
   else if (page==="My Bookings") currentPage=MyBookings();
+  else if (page==="Privacy"||page==="Terms") currentPage=LegalPage({kind:page});
   else if (page==="Admin" && isAdmin) currentPage=AdminPage();
   else currentPage=Home();
 
   return <>{Header()}{!firebaseReady&&<div className="config-banner"><AlertCircle size={16}/> Firebase setup required: add the VITE_FIREBASE environment variables to connect accounts and forms. <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer">Open Firebase</a></div>}
     {notice&&<div className="toast" role="status"><span>{notice}</span><button onClick={()=>setNotice("")}><X size={16}/></button></div>}
-    {currentPage}{Footer()}{AuthModal()}
+    {currentPage}{Footer()}{AuthModal()}{WhatsAppFab()}
   </>;
 }
 
 createRoot(document.getElementById("root")).render(<App/>);
+
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (hadController && !reloaded) { reloaded = true; window.location.reload(); }
+    });
+  });
+}
