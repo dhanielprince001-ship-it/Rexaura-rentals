@@ -1,5 +1,5 @@
 /* Rexaura Rentals service worker — bump VERSION to force an update */
-const VERSION = "v2";
+const VERSION = "v3";
 const SHELL = `rexaura-shell-${VERSION}`;
 const IMAGES = `rexaura-images-${VERSION}`;
 const MAX_IMAGES = 60;
@@ -7,7 +7,12 @@ const BASE = self.registration.scope; // e.g. https://user.github.io/repo/
 const PRECACHE = [BASE, BASE + "offline.html", BASE + "manifest.webmanifest", BASE + "icons/icon-192.png", BASE + "icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(SHELL).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
+  // Cache each file on its own: one missing file (e.g. offline.html in the wrong folder) must not break the whole install.
+  event.waitUntil(
+    caches.open(SHELL)
+      .then((c) => Promise.allSettled(PRECACHE.map((u) => c.add(u))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (event) => {
